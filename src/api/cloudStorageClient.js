@@ -1,5 +1,5 @@
 // Mock API client for local development
-// In production, this would connect to actual Base44 API
+// In production, this would connect to actual Cloud Storage API
 
 const mockProviders = [
   { id: 1, name: 'AWS S3', status: 'active', latency: 45, cost: 0.023, reliability: 99.9 },
@@ -15,10 +15,10 @@ const mockMetrics = {
   avgLatency: 44,
 };
 
-class Base44Client {
+class CloudStorageClient {
   constructor(apiKey = null) {
     this.apiKey = apiKey;
-    this.baseUrl = 'https://api.base44.com';
+    this.baseUrl = 'https://api.cloudstorage.com';
   }
 
   /**
@@ -92,8 +92,8 @@ class Base44Client {
 }
 
 // Export singleton instance
-const base44Client = new Base44Client();
-export default base44Client;
+const cloudStorageClient = new CloudStorageClient();
+export default cloudStorageClient;
 
 // Also export the class for testing
-export { Base44Client };
+export { CloudStorageClient };
