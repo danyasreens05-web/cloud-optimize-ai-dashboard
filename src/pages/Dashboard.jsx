@@ -1,23 +1,30 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Activity, TrendingUp, Database, DollarSign, Cloud, ArrowUpRight, ArrowDownRight } from 'lucide-react';
-import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { Activity, TrendingUp, Database, DollarSign, Cloud, ArrowUpRight, ArrowDownRight, Bell, AlertTriangle } from 'lucide-react';
+import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, PieChart, Pie, Cell } from 'recharts';
 import cloudStorageClient from '@/api/cloudStorageClient';
+import Alert from '@/components/ui/alert';
 
 const Dashboard = () => {
   const [metrics, setMetrics] = useState(null);
   const [providers, setProviders] = useState([]);
+  const [alerts, setAlerts] = useState([]);
+  const [predictions, setPredictions] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [metricsData, providersData] = await Promise.all([
+        const [metricsData, providersData, alertsData, predictionsData] = await Promise.all([
           cloudStorageClient.getMetrics(),
-          cloudStorageClient.getProviders()
+          cloudStorageClient.getProviders(),
+          cloudStorageClient.getAlerts(),
+          cloudStorageClient.getPredictions()
         ]);
         setMetrics(metricsData);
         setProviders(providersData);
+        setAlerts(alertsData);
+        setPredictions(predictionsData);
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
@@ -95,8 +102,43 @@ const Dashboard = () => {
     { month: 'Jun', storage: 1750 }
   ];
 
+  // Filter unacknowledged alerts
+  const activeAlerts = alerts.filter(alert => !alert.acknowledged);
+
+  // Prepare cost breakdown data for pie chart
+  const costBreakdownData = providers.slice(0, 8).map(provider => ({
+    name: provider.name.split(' ')[0], // Shorten names for pie chart
+    value: provider.cost * 100,
+    cost: provider.cost
+  }));
+
+  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658', '#FF7C7C'];
+
   return (
     <div className="space-y-8">
+      {/* Active Alerts */}
+      {activeAlerts.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center space-x-2">
+            <Bell className="h-5 w-5 text-orange-500" />
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Active Alerts</h2>
+          </div>
+          {activeAlerts.map((alert) => (
+            <Alert
+              key={alert.id}
+              type={alert.severity}
+              title={`${alert.type.charAt(0).toUpperCase() + alert.type.slice(1)} Alert`}
+              message={alert.message}
+              onDismiss={() => {
+                setAlerts(prev => prev.map(a =>
+                  a.id === alert.id ? { ...a, acknowledged: true } : a
+                ));
+              }}
+            />
+          ))}
+        </div>
+      )}
+
       {/* Stats Grid with Modern Cards */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat, index) => {
@@ -133,7 +175,7 @@ const Dashboard = () => {
       </div>
 
       {/* Charts Section */}
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {/* Latency Chart */}
         <Card className="shadow-lg border-0">
           <CardHeader>
@@ -146,7 +188,7 @@ const Dashboard = () => {
                 <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
                 <XAxis dataKey="time" stroke="#6b7280" />
                 <YAxis stroke="#6b7280" />
-                <Tooltip 
+                <Tooltip
                   contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px', color: '#fff' }}
                 />
                 <Legend />
@@ -154,6 +196,35 @@ const Dashboard = () => {
                 <Line type="monotone" dataKey="azure" stroke="#10b981" strokeWidth={3} dot={{ r: 4 }} />
                 <Line type="monotone" dataKey="gcp" stroke="#f59e0b" strokeWidth={3} dot={{ r: 4 }} />
               </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Cost Breakdown Pie Chart */}
+        <Card className="shadow-lg border-0">
+          <CardHeader>
+            <CardTitle className="text-xl">Cost Distribution</CardTitle>
+            <CardDescription>Cost breakdown by provider</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={costBreakdownData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {costBreakdownData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value) => [`$${value}`, 'Cost']} />
+              </PieChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
@@ -176,7 +247,7 @@ const Dashboard = () => {
                 <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
                 <XAxis dataKey="month" stroke="#6b7280" />
                 <YAxis stroke="#6b7280" />
-                <Tooltip 
+                <Tooltip
                   contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px', color: '#fff' }}
                 />
                 <Area type="monotone" dataKey="storage" stroke="#8b5cf6" strokeWidth={3} fillOpacity={1} fill="url(#colorStorage)" />
@@ -185,6 +256,72 @@ const Dashboard = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* AI Predictions Section */}
+      {predictions && (
+        <Card className="shadow-lg border-0">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-xl flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5 text-blue-500" />
+                  AI Cost Predictions
+                </CardTitle>
+                <CardDescription>6-month cost and storage growth forecast</CardDescription>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-gray-600 dark:text-gray-400">Trend: {predictions.latencyTrend}</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Growth: {predictions.storageGrowth}</p>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-6 md:grid-cols-2">
+              <div>
+                <h4 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">Cost Forecast</h4>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={predictions.costPredictions}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                    <XAxis dataKey="month" stroke="#6b7280" />
+                    <YAxis stroke="#6b7280" />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px', color: '#fff' }}
+                      formatter={(value) => [`$${value}`, 'Predicted Cost']}
+                    />
+                    <Line type="monotone" dataKey="predictedCost" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <div>
+                <h4 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">Storage Forecast</h4>
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={predictions.costPredictions}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                    <XAxis dataKey="month" stroke="#6b7280" />
+                    <YAxis stroke="#6b7280" />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px', color: '#fff' }}
+                      formatter={(value) => [`${value} GB`, 'Predicted Storage']}
+                    />
+                    <Bar dataKey="predictedStorage" fill="#10b981" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+            <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+              <h5 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">AI Recommendations</h5>
+              <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1">
+                {predictions.recommendations.map((rec, index) => (
+                  <li key={index} className="flex items-start gap-2">
+                    <span className="text-blue-600 dark:text-blue-400">•</span>
+                    {rec}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Providers Table with Enhanced Styling */}
       <Card className="shadow-lg border-0">
